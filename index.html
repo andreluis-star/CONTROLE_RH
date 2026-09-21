@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Controle de Ponto · Portoex</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{
+  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+  --txt:#e7eaf0; --mut:#9aa3b2; --acc:#3b82f6; --acc2:#2563eb;
+  --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --info:#38bdf8;
+  --chip:#242935;
+  box-sizing:border-box;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+h1,h2,h3{margin:0;font-weight:650}
+a{color:var(--acc)}
+.wrap{max-width:1280px;margin:0 auto;padding:20px 18px 60px}
+header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.logo{width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,#3b82f6,#22d3ee);display:grid;place-items:center;font-weight:800;color:#06121f}
+.sub{color:var(--mut);font-size:12.5px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.grid{display:grid;gap:14px}
+.mut{color:var(--mut)}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--txt);padding:8px 14px;border-radius:9px}
+button:hover{border-color:#3a4150}
+button.primary{background:var(--acc2);border-color:var(--acc2);color:#fff}
+button.primary:hover{background:var(--acc)}
+button:disabled{opacity:.45;cursor:not-allowed}
+input,select{font:inherit;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
+input:focus,select:focus{outline:none;border-color:var(--acc)}
+label.fld{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--mut)}
+.drop{border:2px dashed #333b49;border-radius:16px;padding:34px 18px;text-align:center;transition:.15s;background:var(--panel)}
+.drop.hot{border-color:var(--acc);background:#12233d}
+.drop b{font-size:16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px 14px}
+.kpi .v{font-size:23px;font-weight:750;letter-spacing:-.3px}
+.kpi .l{color:var(--mut);font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
+.kpi.ok .v{color:var(--ok)} .kpi.bad .v{color:var(--bad)} .kpi.warn .v{color:var(--warn)} .kpi.info .v{color:var(--info)}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:2px 0 12px}
+.toolbar .sp{flex:1}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--mut);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;position:sticky;top:0;background:var(--panel)}
+tbody tr:hover{background:#1b202a}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+.pos{color:var(--ok)} .neg{color:var(--bad)}
+.pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.pill.ok{background:#0f2e1c;color:#5ee595} .pill.warn{background:#3a2c0d;color:#f9c957}
+.pill.bad{background:#3a1414;color:#ff8a8a} .pill.info{background:#0d2a3a;color:#7dd3fc}
+.pill.neutral{background:#242935;color:#aeb6c4}
+.chip{background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:4px 9px;font-size:12px;color:var(--mut)}
+.name{cursor:pointer;color:var(--txt);font-weight:600;text-decoration:underline;text-decoration-color:#3a4150;text-underline-offset:3px}
+.name:hover{text-decoration-color:var(--acc)}
+/* modal */
+.ov{position:fixed;inset:0;background:rgba(4,7,12,.72);display:none;align-items:flex-start;justify-content:center;padding:30px 14px;z-index:40;overflow:auto}
+.ov.on{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:960px;width:100%;padding:18px}
+.daygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:12px}
+.day{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 9px;font-size:12px}
+.day .d{font-weight:700;font-size:13px} .day .t{color:var(--mut);font-size:11.5px;margin-top:2px}
+.day.warn{border-color:#5a4410} .day.bad{border-color:#5a1a1a} .day.folgaT{border-color:#16506b} .day.falta{border-color:#5a1a1a;background:#241214}
+.note{font-size:11px;color:var(--info);margin-top:3px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--mut);margin-top:10px}
+.legend span::before{content:"■ ";}
+.status{font-size:12.5px;padding:8px 10px;border-radius:9px;margin-top:8px;display:none}
+.status.on{display:block}
+.status.ok{background:#0f2e1c;color:#8ff0b6} .status.err{background:#3a1414;color:#ffb0b0} .status.work{background:#12233d;color:#bcd8ff}
+.small{font-size:12px}
+.rowflex{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+details.help{margin-top:8px}
+details.help summary{cursor:pointer;color:var(--acc);font-size:12.5px}
+.steps{font-size:12.5px;color:var(--mut);line-height:1.6;padding-left:18px}
+code{background:#0c0e12;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12px}
+.hidden{display:none}
+footer{margin-top:26px;color:var(--mut);font-size:11.5px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="logo">P</div>
+    <div style="flex:1">
+      <h1>Controle de Ponto <span class="mut" style="font-weight:400">· Expedição / Portoex</span></h1>
+      <div class="sub">Leitura do Espelho de Ponto (PDF) → entradas, saídas, horas extras, faltas e histórico em Google Sheets</div>
+    </div>
+    <div class="chip" id="periodChip">Nenhum arquivo carregado</div>
+  </header>
+
+  <!-- UPLOAD -->
+  <section class="card" id="uploadCard" style="margin-top:14px">
+    <div class="drop" id="drop">
+      <b>Solte o PDF do Espelho de Ponto aqui</b><br>
+      <span class="mut">ou</span> <button class="primary" id="pickBtn" style="margin-top:8px">Selecionar arquivo</button>
+      <input type="file" id="file" accept="application/pdf" class="hidden">
+      <div class="mut small" style="margin-top:10px">O arquivo é lido 100% no seu navegador. Nada é enviado sem você clicar em “Gravar na planilha”.</div>
+    </div>
+    <div class="rowflex" style="margin-top:14px">
+      <label class="fld">Tolerância de atraso (min)
+        <input type="number" id="tol" value="10" min="0" max="30" style="width:90px">
+      </label>
+      <label class="fld">Feriados no período (dd/mm, separados por vírgula) — contam como 100%
+        <input type="text" id="feriados" placeholder="ex: 15/08, 20/08" style="width:230px">
+      </label>
+      <div class="sp"></div>
+      <div class="mut small">v1.0 · Portoex Logística</div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="results" class="hidden">
+    <div class="kpis" id="kpis" style="margin-top:16px"></div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="toolbar">
+        <input type="text" id="q" placeholder="🔍 Buscar nome / matrícula" style="min-width:220px">
+        <select id="fDep"><option value="">Todos os departamentos</option></select>
+        <select id="fTurno"><option value="">Todos os turnos</option></select>
+        <select id="fStatus">
+          <option value="">Todos os status</option>
+          <option value="he">Com horas extras</option>
+          <option value="deficit">Com déficit</option>
+          <option value="falta">Com faltas</option>
+          <option value="impar">Batida ímpar (revisar)</option>
+          <option value="semreg">Sem marcações</option>
+        </select>
+        <div class="sp"></div>
+        <button id="csvBtn">⬇ CSV diário</button>
+        <button id="csvResBtn">⬇ CSV resumo</button>
+      </div>
+      <div class="tablewrap">
+        <table id="tbl">
+          <thead><tr>
+            <th data-k="mat" class="num">Mat.</th>
+            <th data-k="name">Colaborador</th>
+            <th data-k="dept">Depto</th>
+            <th data-k="turno">Turno</th>
+            <th data-k="dias" class="num">Dias</th>
+            <th data-k="trab" class="num">Trabalhado</th>
+            <th data-k="prev" class="num">Previsto</th>
+            <th data-k="saldo" class="num">Saldo</th>
+            <th data-k="he50" class="num">HE 50%</th>
+            <th data-k="he100" class="num">HE 100%</th>
+            <th data-k="faltas" class="num">Faltas</th>
+            <th data-k="atrasos" class="num">Atrasos</th>
+            <th data-k="impar" class="num">Ímpar</th>
+            <th data-k="stat">Status</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span style="color:#5ee595">OK</span>
+        <span style="color:#f9c957">Revisar (batida ímpar / atraso)</span>
+        <span style="color:#ff8a8a">Falta / déficit</span>
+        <span style="color:#7dd3fc">Sem marcações no período</span>
+      </div>
+    </div>
+
+    <!-- SHEETS SYNC -->
+    <div class="card" style="margin-top:16px">
+      <h3>Gravar histórico no Google Sheets</h3>
+      <div class="rowflex" style="margin-top:10px">
+        <label class="fld" style="flex:1;min-width:280px">URL do Web App (Apps Script) — implantação /exec
+          <input type="text" id="endpoint" placeholder="https://script.google.com/macros/s/XXXX/exec">
+        </label>
+        <button id="testBtn">🔌 Testar conexão</button>
+        <button class="primary" id="syncBtn">☁ Gravar na planilha</button>
+      </div>
+      <div class="status" id="syncStatus"></div>
+      <details class="help">
+        <summary>Como configurar (uma vez só)</summary>
+        <ol class="steps">
+          <li>Abra a planilha e vá em <b>Extensões → Apps Script</b>.</li>
+          <li>Cole o conteúdo do arquivo <code>Codigo.gs</code> que eu te enviei e salve.</li>
+          <li>Clique em <b>Implantar → Nova implantação → Tipo: App da Web</b>.</li>
+          <li>Em “Quem tem acesso”, escolha <b>Qualquer pessoa</b>; execute como <b>Você mesmo</b>.</li>
+          <li>Copie a <b>URL /exec</b> gerada e cole no campo acima. Pronto — dá pra reusar sempre.</li>
+        </ol>
+        <div class="mut small">A planilha de destino já está fixada no script (ID <code>1Jf_SmG…Vb14</code>). Cada importação atualiza o período correspondente sem duplicar.</div>
+      </details>
+    </div>
+  </section>
+</div>
+
+<!-- MODAL detalhe -->
+<div class="ov" id="ov">
+  <div class="modal" id="modal"></div>
+</div>
+
+<footer>Controle de Ponto Portoex · leitura local do Espelho de Ponto (Portaria 671) · saldo = trabalhado − previsto</footer>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const MESES={janeiro:1,fevereiro:2,março:3,marco:3,abril:4,maio:5,junho:6,julho:7,agosto:8,setembro:9,outubro:10,novembro:11,dezembro:12};
+const TIME=/^\d{1,2}:\d{2}\*?$/;
+const CHRE=/^(0\d{3}|0)$/;
+const $=id=>document.getElementById(id);
+let DATA=null, SORT={k:'name',dir:1};
+
+/* ---------- util tempo ---------- */
+const toMin=t=>{t=(t||'').replace('*','');const[a,b]=t.split(':');return (+a)*60+(+b);};
+const fmt=m=>{const s=m<0?'-':'';m=Math.abs(m);return s+Math.floor(m/60)+':'+String(m%60).padStart(2,'0');};
+
+function contractualMin(pairs){
+  let tot=0;
+  for(let i=0;i+1<pairs.length;i+=2){let a=toMin(pairs[i]),b=toMin(pairs[i+1]);if(b<a)b+=1440;tot+=b-a;}
+  return tot;
+}
+function workedMin(punches){
+  const mins=punches.map(toMin); let base=0,prev=null; const adj=[];
+  for(const m of mins){let mm=m+base; if(prev!==null&&mm<prev){base+=1440;mm=m+base;} adj.push(mm);prev=mm;}
+  let tot=0; const pairs=Math.floor(adj.length/2);
+  for(let i=0;i<pairs*2;i+=2)tot+=adj[i+1]-adj[i];
+  return {tot,odd:adj.length%2===1,firstIn:adj.length?adj[0]:null};
+}
+
+/* ---------- parse PDF ---------- */
+async function parsePDF(buf){
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const emps=[]; let cur=null;
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const c=await page.getTextContent();
+    // agrupar por linha (y)
+    const map=new Map();
+    for(const it of c.items){
+      const x=it.transform[4], y=Math.round(it.transform[5]);
+      let key=null;
+      for(const k of map.keys()) if(Math.abs(k-y)<=2){key=k;break;}
+      if(key===null)key=y;
+      (map.get(key)||map.set(key,[]).get(key)).push({x,s:it.str.trim()});
+    }
+    const rows=[...map.entries()].sort((a,b)=>b[0]-a[0]).map(e=>e[1].filter(t=>t.s!=='').sort((a,b)=>a.x-b.x));
+    for(const line of rows){
+      const joined=line.map(t=>t.s).join(' ');
+      if(joined.includes('Empregado:')){
+        if(cur)emps.push(cur);
+        cur={name:'',mat:'',dept:'',cargo:'',emit:'',adm:'',periodo:'',contract:[],chCode:'',days:[]};
+        let m=joined.match(/Empregado:\s*(.+?)\s*\|/); if(m)cur.name=m[1].trim();
+        m=joined.match(/Matr[ií]cula:\s*(\d+)/); if(m)cur.mat=m[1];
+      }
+      if(!cur)continue;
+      if(joined.includes('Departamento:')){
+        let m=joined.match(/Departamento:\s*(.+?)\s*\|/); if(m)cur.dept=m[1].trim();
+        m=joined.match(/Cargo:\s*(.+)$/); if(m)cur.cargo=m[1].trim();
+      }
+      if(joined.includes('Admiss')){let m=joined.match(/(\d{2}\/\d{2}\/\d{4})/);if(m)cur.adm=m[1];}
+      if(joined.includes('emitido em')){let m=joined.match(/(\d{2}\/\d{2}\/\d{4})/);if(m)cur.emit=m[1];}
+      if(joined.includes('Período')||joined.includes('Periodo')){
+        let m=joined.match(/(\d{1,2}\/\w+\/\d{4})\s*a\s*(\d{1,2}\/\w+\/\d{4})/i); if(m)cur.periodo=m[1]+' a '+m[2];
+      }
+      const toks=line.map(t=>t.s);
+      if(toks[0]&&/^0\d{3}$/.test(toks[0])&&toks[1]&&TIME.test(toks[1])){
+        cur.chCode=toks[0]; cur.contract=toks.slice(1).filter(t=>TIME.test(t));
+      }
+      // linha de dia
+      const first=line[0];
+      if(first&&/^\d{2}$/.test(first.s)&&first.x<46){
+        const jorn=line.filter(t=>TIME.test(t.s)&&t.x>=200).map(t=>t.s);
+        const orig=line.filter(t=>TIME.test(t.s)&&t.x<200).map(t=>t.s);
+        const chc=line.filter(t=>CHRE.test(t.s)&&t.x>=350).map(t=>t.s);
+        cur.days.push({day:first.s,jorn,orig,ch:chc[0]||'',notes:[]});
+      } else if(first&&first.x>=380&&cur.days.length){
+        cur.days[cur.days.length-1].notes.push(joined.trim());
+      }
+    }
+  }
+  if(cur)emps.push(cur);
+  return emps;
+}
+
+/* ---------- período → datas reais ---------- */
+function periodInfo(periodo){
+  const m=(periodo||'').match(/(\d{1,2})\/(\w+)\/(\d{4})\s*a\s*(\d{1,2})\/(\w+)\/(\d{4})/i);
+  if(!m)return null;
+  const d1=+m[1],mo1=MESES[m[2].toLowerCase()]||0,y1=+m[3];
+  const d2=+m[4],mo2=MESES[m[5].toLowerCase()]||0,y2=+m[6];
+  return {d1,mo1,y1,d2,mo2,y2};
+}
+function realDate(dayNum,pi){
+  if(!pi)return null;
+  const dn=+dayNum;
+  // dias >= dia inicial pertencem ao mês inicial; senão mês final
+  if(dn>=pi.d1) return new Date(pi.y1,pi.mo1-1,dn);
+  return new Date(pi.y2,pi.mo2-1,dn);
+}
+function emitDate(emit){const m=(emit||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);return m?new Date(+m[3],+m[2]-1,+m[1]):null;}
+
+/* ---------- motor ---------- */
+function compute(emp,settings){
+  const pi=periodInfo(emp.periodo);
+  const emitD=emitDate(emp.emit);
+  const exp=emp.contract.length?contractualMin(emp.contract):0;
+  const ferSet=new Set(settings.feriados);
+  const contractIn = emp.contract.length? toMin(emp.contract[0]) : null;
+  let trab=0,prev=0,faltas=0,atrasos=0,impar=0,he50=0,he100=0,folgaTrab=0,workdays=0,punchDays=0;
+  const dayrows=[];
+  for(const d of emp.days){
+    const rd=realDate(d.day,pi);
+    const dow=rd?rd.getDay():null;                 // 0=domingo
+    const isSun=dow===0;
+    const ddmm=rd?String(rd.getDate()).padStart(2,'0')+'/'+String(rd.getMonth()+1).padStart(2,'0'):'';
+    const isFer=ferSet.has(ddmm);
+    const scheduled=d.ch!==''&&d.ch!=='0';
+    const past = emitD&&rd ? rd<=emitD : true;
+    const isEmitDay = emitD&&rd ? rd.getTime()===emitD.getTime() : false;
+    let st='off', worked=0, odd=false, late=false, extra=0;
+    if(d.jorn.length){
+      punchDays++;
+      const w=workedMin(d.jorn); worked=w.tot; odd=w.odd;
+      trab+=worked;
+      // atraso
+      if(scheduled&&contractIn!==null&&w.firstIn!==null&&w.firstIn>contractIn+settings.tol){late=true;atrasos++;}
+      if(odd){ impar++; st=isEmitDay?'andamento':'impar'; }
+      if(scheduled){
+        prev+=exp; workdays++;
+        extra=worked-exp;
+        if(extra>0){ if(isSun||isFer)he100+=extra; else he50+=extra; }
+        if(!odd&&st==='off') st = late?'atraso':(extra>0?'he':'ok');
+      }else{
+        // trabalho em folga/domingo/feriado = 100%
+        folgaTrab++; he100+=worked; if(!odd)st='folgaT';
+      }
+    }else{
+      if(scheduled&&past&&!isEmitDay){ faltas++; prev+=exp; st='falta'; }
+      else st='off';
+    }
+    dayrows.push({day:d.day,ddmm,dow,scheduled,worked,odd,late,extra,st,jorn:d.jorn,notes:d.notes,isSun,isFer});
+  }
+  const semReg = punchDays===0;
+  const saldo=trab-prev;
+  let overall;
+  if(semReg) overall='semreg';
+  else if(faltas>0) overall='falta';
+  else if(impar>0) overall='impar';
+  else if(saldo<0) overall='deficit';
+  else if(atrasos>0) overall='atraso';
+  else overall='ok';
+  return {emp,exp,trab,prev,saldo,faltas,atrasos,impar,he50,he100,folgaTrab,workdays,punchDays,semReg,overall,dayrows,
+          turno:turnoLabel(emp.chCode)};
+}
+function turnoLabel(ch){return {'0001':'Comercial','0003':'Manhã 6h','0004':'Tarde/Noite','0005':'Noturno'}[ch]||('Cód '+(ch||'—'));}
+
+/* ---------- render ---------- */
+function statusPill(o){
+  const map={ok:['ok','OK'],he:['ok','OK · HE'],atraso:['warn','Atraso'],impar:['warn','Revisar'],
+    deficit:['bad','Déficit'],falta:['bad','Falta'],semreg:['info','Sem marcações']};
+  const[c,t]=map[o]||['neutral','—'];
+  return `<span class="pill ${c}">${t}</span>`;
+}
+function renderKpis(list){
+  const n=list.length;
+  const he=list.reduce((a,x)=>a+x.he50+x.he100,0);
+  const def=list.filter(x=>x.saldo<0&&!x.semReg).length;
+  const flt=list.reduce((a,x)=>a+x.faltas,0);
+  const imp=list.filter(x=>x.impar>0).length;
+  const sem=list.filter(x=>x.semReg).length;
+  const saldoTot=list.reduce((a,x)=>a+(x.semReg?0:x.saldo),0);
+  $('kpis').innerHTML=[
+    ['info',n,'Colaboradores'],
+    [saldoTot>=0?'ok':'bad',fmt(saldoTot),'Saldo geral'],
+    ['warn',fmt(he),'Horas extras (50+100)'],
+    ['bad',flt,'Faltas a justificar'],
+    ['warn',imp,'Com batida ímpar'],
+    ['bad',def,'Com déficit'],
+    ['info',sem,'Sem marcações'],
+  ].map(([c,v,l])=>`<div class="kpi ${c}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+}
+function currentList(){
+  let list=DATA.slice();
+  const q=$('q').value.toLowerCase().trim();
+  const dep=$('fDep').value, tur=$('fTurno').value, stt=$('fStatus').value;
+  if(q)list=list.filter(x=>x.emp.name.toLowerCase().includes(q)||x.emp.mat.includes(q));
+  if(dep)list=list.filter(x=>x.emp.dept===dep);
+  if(tur)list=list.filter(x=>x.turno===tur);
+  if(stt==='he')list=list.filter(x=>x.he50+x.he100>0);
+  if(stt==='deficit')list=list.filter(x=>x.saldo<0&&!x.semReg);
+  if(stt==='falta')list=list.filter(x=>x.faltas>0);
+  if(stt==='impar')list=list.filter(x=>x.impar>0);
+  if(stt==='semreg')list=list.filter(x=>x.semReg);
+  const k=SORT.k,dir=SORT.dir;
+  const val=x=>({mat:+x.emp.mat,name:x.emp.name,dept:x.emp.dept,turno:x.turno,dias:x.workdays,
+    trab:x.trab,prev:x.prev,saldo:x.saldo,he50:x.he50,he100:x.he100,faltas:x.faltas,atrasos:x.atrasos,impar:x.impar,stat:x.overall}[k]);
+  list.sort((a,b)=>{const va=val(a),vb=val(b);return (va>vb?1:va<vb?-1:0)*dir;});
+  return list;
+}
+function renderTable(){
+  const list=currentList();
+  renderKpis(list);
+  $('tbody').innerHTML=list.map((x,i)=>`<tr>
+    <td class="num">${x.emp.mat}</td>
+    <td><span class="name" data-i="${DATA.indexOf(x)}">${x.emp.name}</span></td>
+    <td>${x.emp.dept||'—'}</td>
+    <td>${x.turno}</td>
+    <td class="num">${x.workdays}</td>
+    <td class="num">${fmt(x.trab)}</td>
+    <td class="num">${fmt(x.prev)}</td>
+    <td class="num ${x.saldo>=0?'pos':'neg'}">${x.semReg?'—':fmt(x.saldo)}</td>
+    <td class="num">${x.he50?fmt(x.he50):'—'}</td>
+    <td class="num">${x.he100?fmt(x.he100):'—'}</td>
+    <td class="num ${x.faltas?'neg':''}">${x.faltas||'—'}</td>
+    <td class="num ${x.atrasos?'':''}">${x.atrasos||'—'}</td>
+    <td class="num ${x.impar?'neg':''}">${x.impar||'—'}</td>
+    <td>${statusPill(x.overall)}</td>
+  </tr>`).join('');
+  document.querySelectorAll('.name').forEach(el=>el.onclick=()=>openDetail(+el.dataset.i));
+}
+function openDetail(i){
+  const x=DATA[i];
+  const dw=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const cells=x.dayrows.map(d=>{
+    const cls=({impar:'bad',atraso:'warn',he:'',folgaT:'folgaT',falta:'falta',andamento:'warn'}[d.st])||'';
+    const tag=d.st==='falta'?'<span class="pill bad">FALTA</span>':
+              d.st==='folgaT'?'<span class="pill info">Folga trab.</span>':
+              d.st==='impar'?'<span class="pill warn">Batida ímpar</span>':
+              d.st==='andamento'?'<span class="pill neutral">Em andamento</span>':
+              d.late?'<span class="pill warn">Atraso</span>':
+              d.extra>0?'<span class="pill ok">+'+fmt(d.extra)+'</span>':'';
+    const punches=d.jorn.length?d.jorn.map(p=>p.replace('*','')).join(' · '):'<span class="mut">sem marcação</span>';
+    const notes=d.notes.length?`<div class="note">${d.notes.map(n=>n.replace(/^\d+:\d+\s*[ID]\s*/,'▸ ')).join('<br>')}</div>`:'';
+    return `<div class="day ${cls}">
+      <div class="d">${d.day}/${d.ddmm.split('/')[1]||''} <span class="mut" style="font-weight:400">${d.dow!==null?dw[d.dow]:''}</span></div>
+      <div class="t">${punches}</div>
+      ${d.worked?`<div class="t">Trab: <b>${fmt(d.worked)}</b></div>`:''}
+      <div style="margin-top:3px">${tag}</div>${notes}
+    </div>`;
+  }).join('');
+  $('modal').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div>
+        <h2>${x.emp.name} <span class="mut" style="font-weight:400">· mat. ${x.emp.mat}</span></h2>
+        <div class="mut small">${x.emp.cargo||''} · ${x.emp.dept||''} · Turno ${x.turno} · Admissão ${x.emp.adm||'—'}</div>
+        <div class="mut small">Período ${x.emp.periodo||'—'}</div>
+      </div>
+      <button onclick="$('ov').classList.remove('on')">✕ Fechar</button>
+    </div>
+    <div class="kpis" style="margin-top:12px">
+      <div class="kpi"><div class="v">${fmt(x.trab)}</div><div class="l">Trabalhado</div></div>
+      <div class="kpi"><div class="v">${fmt(x.prev)}</div><div class="l">Previsto</div></div>
+      <div class="kpi ${x.saldo>=0?'ok':'bad'}"><div class="v">${x.semReg?'—':fmt(x.saldo)}</div><div class="l">Saldo</div></div>
+      <div class="kpi warn"><div class="v">${fmt(x.he50)}</div><div class="l">HE 50%</div></div>
+      <div class="kpi warn"><div class="v">${fmt(x.he100)}</div><div class="l">HE 100%</div></div>
+      <div class="kpi bad"><div class="v">${x.faltas}</div><div class="l">Faltas</div></div>
+    </div>
+    <div class="daygrid">${cells}</div>
+    <div class="mut small" style="margin-top:10px">HE 100% = trabalho em domingo, feriado ou folga. “Batida ímpar” = nº de marcações não fecha (revisar no ponto). “Em andamento” = dia da emissão do relatório.</div>`;
+  $('ov').classList.add('on');
+}
+
+/* ---------- export ---------- */
+function download(name,txt){const b=new Blob([txt],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();}
+function csvDiario(){
+  const rows=[['Matricula','Nome','Departamento','Cargo','Turno','Periodo','Dia','Data','DiaSemana','Escalado','Marcacoes','TrabalhadoMin','PrevistoMin','ExtraMin','Status','Observacao']];
+  const dw=['Domingo','Segunda','Terca','Quarta','Quinta','Sexta','Sabado'];
+  for(const x of DATA)for(const d of x.dayrows){
+    rows.push([x.emp.mat,x.emp.name,x.emp.dept,x.emp.cargo,x.turno,x.emp.periodo,d.day,d.ddmm,d.dow!==null?dw[d.dow]:'',
+      d.scheduled?'Sim':'Nao',d.jorn.map(p=>p.replace('*','')).join(' '),d.worked,d.scheduled?x.exp:0,d.extra>0?d.extra:0,d.st,
+      d.notes.join(' | ').replace(/;/g,',')]);
+  }
+  download('ponto_diario.csv',rows.map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(';')).join('\n'));
+}
+function csvResumo(){
+  const rows=[['Matricula','Nome','Departamento','Turno','Periodo','DiasTrab','TrabalhadoMin','PrevistoMin','SaldoMin','HE50Min','HE100Min','Faltas','Atrasos','BatidaImpar','SemMarcacoes','Status']];
+  for(const x of DATA)rows.push([x.emp.mat,x.emp.name,x.emp.dept,x.turno,x.emp.periodo,x.workdays,x.trab,x.prev,x.saldo,x.he50,x.he100,x.faltas,x.atrasos,x.impar,x.semReg?'Sim':'Nao',x.overall]);
+  download('ponto_resumo.csv',rows.map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(';')).join('\n'));
+}
+
+/* ---------- sheets sync ---------- */
+function validaURL(url,st){
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(url)){
+    st.className='status err on';st.textContent='URL inválida. Precisa ser a implantação que termina em /exec.';return false;
+  }
+  return true;
+}
+function testConn(){
+  const url=$('endpoint').value.trim(); const st=$('syncStatus');
+  if(!validaURL(url,st))return;
+  localStorage.setItem('ponto_endpoint',url);
+  window.open(url,'_blank');
+  st.className='status work on';
+  st.innerHTML='Abri a URL numa nova aba. Se aparecer <code>{"ok":true,...}</code> a implantação está pública — pode gravar. '+
+    'Se pedir login ou "É necessário permissão", troque o acesso da implantação para <b>Qualquer pessoa</b>.';
+}
+async function syncSheets(){
+  const url=$('endpoint').value.trim();
+  const st=$('syncStatus');
+  if(!validaURL(url,st))return;
+  localStorage.setItem('ponto_endpoint',url);
+  st.className='status work on';st.textContent='Enviando dados para a planilha…';
+  const periodo=DATA[0]?.emp.periodo||'';
+  const resumo=DATA.map(x=>({mat:x.emp.mat,nome:x.emp.name,dept:x.emp.dept,turno:x.turno,periodo:x.emp.periodo,
+    diasTrab:x.workdays,trabMin:x.trab,prevMin:x.prev,saldoMin:x.saldo,he50:x.he50,he100:x.he100,
+    faltas:x.faltas,atrasos:x.atrasos,impar:x.impar,semReg:x.semReg,status:x.overall}));
+  const diario=[];
+  const dw=['Domingo','Segunda','Terca','Quarta','Quinta','Sexta','Sabado'];
+  for(const x of DATA)for(const d of x.dayrows)diario.push({mat:x.emp.mat,nome:x.emp.name,dept:x.emp.dept,turno:x.turno,
+    periodo:x.emp.periodo,dia:d.day,data:d.ddmm,dow:d.dow!==null?dw[d.dow]:'',escalado:d.scheduled,
+    marc:d.jorn.map(p=>p.replace('*','')).join(' '),trabMin:d.worked,prevMin:d.scheduled?x.exp:0,
+    extraMin:d.extra>0?d.extra:0,status:d.st,obs:d.notes.join(' | ')});
+  try{
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({periodo,resumo,diario})});
+    const j=await res.json();
+    if(j.ok){st.className='status ok on';st.textContent=`✅ Gravado: ${j.resumo} colaboradores no Resumo e ${j.diario} linhas no Diário (período ${periodo}).`;}
+    else{st.className='status err on';st.textContent='Erro no script: '+(j.error||'desconhecido');}
+  }catch(e){
+    // Fallback: tenta gravar sem ler a resposta (contorna bloqueio de CORS/redirect).
+    try{
+      await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify({periodo,resumo,diario})});
+      st.className='status ok on';
+      st.innerHTML='📤 Dados enviados (o navegador não deixou ler a confirmação, mas a gravação foi disparada). '+
+        'Confira a aba <b>Log</b> da planilha para validar o período <b>'+periodo+'</b>.';
+    }catch(e2){
+      st.className='status err on';
+      st.innerHTML='Falha ao enviar: '+e.message+'.<br>1) Cole a URL /exec no navegador e veja se abre <code>{"ok":true}</code>. '+
+        '2) A implantação precisa estar como <b>Qualquer pessoa</b>. '+
+        '3) Rodando o arquivo local? Hospede no GitHub Pages (https) que resolve.';
+    }
+  }
+}
+
+/* ---------- fluxo ---------- */
+async function handleFile(file){
+  if(!file||file.type!=='application/pdf'){alert('Envie um PDF do Espelho de Ponto.');return;}
+  $('periodChip').textContent='Lendo '+file.name+'…';
+  const buf=await file.arrayBuffer();
+  let emps;
+  try{ emps=await parsePDF(buf); }catch(e){$('periodChip').textContent='Erro ao ler PDF';alert('Não consegui ler o PDF: '+e.message);return;}
+  const settings={tol:+$('tol').value||10,feriados:($('feriados').value||'').split(',').map(s=>s.trim()).filter(Boolean)};
+  DATA=emps.filter(e=>e.name).map(e=>compute(e,settings));
+  if(!DATA.length){$('periodChip').textContent='Nenhum colaborador encontrado';alert('Não encontrei colaboradores no PDF. É um Espelho de Ponto no formato da Portaria 671?');return;}
+  const per=DATA[0].emp.periodo||'período não identificado';
+  $('periodChip').textContent=`${DATA.length} colaboradores · ${per}`;
+  // filtros
+  const deps=[...new Set(DATA.map(x=>x.emp.dept).filter(Boolean))].sort();
+  const turs=[...new Set(DATA.map(x=>x.turno))].sort();
+  $('fDep').innerHTML='<option value="">Todos os departamentos</option>'+deps.map(d=>`<option>${d}</option>`).join('');
+  $('fTurno').innerHTML='<option value="">Todos os turnos</option>'+turs.map(t=>`<option>${t}</option>`).join('');
+  $('results').classList.remove('hidden');
+  renderTable();
+  $('results').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+/* eventos */
+$('pickBtn').onclick=()=>$('file').click();
+$('file').onchange=e=>handleFile(e.target.files[0]);
+const drop=$('drop');
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('hot');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hot');}));
+drop.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));
+['q','fDep','fTurno','fStatus'].forEach(id=>$(id).addEventListener('input',renderTable));
+document.querySelectorAll('#tbl th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;SORT.dir=SORT.k===k?-SORT.dir:1;SORT.k=k;renderTable();});
+$('csvBtn').onclick=csvDiario; $('csvResBtn').onclick=csvResumo;
+$('syncBtn').onclick=syncSheets;
+$('testBtn').onclick=testConn;
+$('ov').onclick=e=>{if(e.target.id==='ov')$('ov').classList.remove('on');};
+$('endpoint').value=localStorage.getItem('ponto_endpoint')||'';
+</script>
+</body>
+</html>
