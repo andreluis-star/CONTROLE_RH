@@ -119,7 +119,18 @@ tfoot th{background:var(--panel2);color:var(--txt);border-top:2px solid var(--li
         <input type="text" id="feriados" placeholder="ex: 15/08, 20/08" style="width:230px">
       </label>
       <div class="sp"></div>
-      <div class="mut small">v1.0 · Portoex Logística</div>
+      <div class="mut small">v2.0 · Portoex Logística</div>
+    </div>
+    <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+      <div class="mut small" style="margin-bottom:6px">Ou visualize um período já salvo na planilha (sem precisar do PDF):</div>
+      <div class="rowflex">
+        <label class="fld" style="flex:1;min-width:260px">URL do Web App (/exec)
+          <input type="text" id="endpoint2" placeholder="https://script.google.com/macros/s/…/exec"></label>
+        <button id="loadHist2">☁ Buscar períodos</button>
+        <label class="fld hidden" id="perSel2Wrap">Período
+          <select id="periodSel2"></select></label>
+      </div>
+      <div class="status" id="histMsg"></div>
     </div>
   </section>
 
@@ -131,6 +142,15 @@ tfoot th{background:var(--panel2);color:var(--txt);border-top:2px solid var(--li
     </div>
 
     <div id="panelColab">
+    <div class="card" style="margin-top:14px">
+      <div class="rowflex">
+        <label class="fld">Período em exibição
+          <select id="periodSel"><option value="__pdf">PDF carregado</option></select></label>
+        <button id="loadHist">☁ Atualizar períodos salvos</button>
+        <div class="sp"></div>
+        <span class="mut small" id="periodMsg"></span>
+      </div>
+    </div>
     <div class="kpis" id="kpis" style="margin-top:14px"></div>
 
     <div class="card" style="margin-top:16px">
@@ -224,6 +244,22 @@ tfoot th{background:var(--panel2);color:var(--txt);border-top:2px solid var(--li
         <h3>Colaboradores por dia · por ocorrência</h3>
         <div class="chartwrap" id="chart" style="margin-top:10px"></div>
         <div class="leg" id="chartLeg"></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="rowflex" style="align-items:center">
+          <h3 style="margin:0">Operação por cargo — quem está e por que não está</h3>
+          <div class="sp"></div>
+          <label class="fld">Dia<select id="opDay"></select></label>
+        </div>
+        <div class="tablewrap" style="margin-top:10px"><table id="opCargo"></table></div>
+        <div class="mut small" style="margin-top:8px">Clique num cargo para ver os nomes ausentes e o motivo.</div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h3>Presentes por cargo · dia a dia</h3>
+        <div class="tablewrap" style="margin-top:10px"><table id="matrixCargo"></table></div>
+        <div class="mut small" style="margin-top:8px">Cada célula = presentes naquele cargo no dia. Vermelho = ninguém presente num dia em que havia gente escalada.</div>
       </div>
 
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));margin-top:14px">
@@ -554,12 +590,12 @@ async function syncSheets(){
   localStorage.setItem('ponto_endpoint',url);
   st.className='status work on';st.textContent='Enviando dados para a planilha…';
   const periodo=DATA[0]?.emp.periodo||'';
-  const resumo=DATA.map(x=>({mat:x.emp.mat,nome:x.emp.name,dept:x.emp.dept,turno:x.turno,periodo:x.emp.periodo,
+  const resumo=DATA.map(x=>({mat:x.emp.mat,nome:x.emp.name,dept:x.emp.dept,cargo:x.emp.cargo,turno:x.turno,periodo:x.emp.periodo,
     diasTrab:x.workdays,trabMin:x.trab,prevMin:x.prev,saldoMin:x.saldo,he50:x.he50,he100:x.he100,
     faltas:x.faltas,atrasos:x.atrasos,impar:x.impar,semReg:x.semReg,status:x.overall}));
   const diario=[];
   const dw=['Domingo','Segunda','Terca','Quarta','Quinta','Sexta','Sabado'];
-  for(const x of DATA)for(const d of x.dayrows)diario.push({mat:x.emp.mat,nome:x.emp.name,dept:x.emp.dept,turno:x.turno,
+  for(const x of DATA)for(const d of x.dayrows)diario.push({mat:x.emp.mat,nome:x.emp.name,dept:x.emp.dept,cargo:x.emp.cargo,turno:x.turno,
     periodo:x.emp.periodo,dia:d.day,data:d.ddmm,dow:d.dow!==null?dw[d.dow]:'',escalado:d.scheduled,
     marc:d.jorn.map(p=>p.replace('*','')).join(' '),trabMin:d.worked,prevMin:d.scheduled?x.exp:0,
     extraMin:d.extra>0?d.extra:0,status:d.st,obs:d.notes.join(' | ')});
@@ -597,15 +633,9 @@ async function handleFile(file){
   DATA=emps.filter(e=>e.name).map(e=>compute(e,settings));
   if(!DATA.length){$('periodChip').textContent='Nenhum colaborador encontrado';alert('Não encontrei colaboradores no PDF. É um Espelho de Ponto no formato da Portaria 671?');return;}
   const per=DATA[0].emp.periodo||'período não identificado';
-  $('periodChip').textContent=`${DATA.length} colaboradores · ${per}`;
-  // filtros
-  const deps=[...new Set(DATA.map(x=>x.emp.dept).filter(Boolean))].sort();
-  const turs=[...new Set(DATA.map(x=>x.turno))].sort();
-  $('fDep').innerHTML='<option value="">Todos os departamentos</option>'+deps.map(d=>`<option>${d}</option>`).join('');
-  $('fTurno').innerHTML='<option value="">Todos os turnos</option>'+turs.map(t=>`<option>${t}</option>`).join('');
-  $('results').classList.remove('hidden');
-  renderTable();
-  populateDashFilters();
+  PDFDATA=DATA;
+  activate(DATA,per);
+  fillPeriodSelects(); $('periodSel').value='__pdf';
   $('results').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
@@ -625,7 +655,7 @@ function periodDays(){
   return out;
 }
 function feriasTipo(mat,pd){
-  for(const f of FERIAS) if(f.mat===mat && f.ini<=pd.iso && pd.iso<=f.fim) return 'ferias';
+  for(const f of FERIAS) if(f.mat===mat && f.ini<=pd.iso && pd.iso<=f.fim) return f.tipo;
   return null;
 }
 function classifyDay(x,pd){
@@ -665,6 +695,62 @@ function renderDashboard(){
   renderChart(perDay);
   renderDayTable(perDay);
   renderDepTable(depAgg,perDay.length);
+  populateOpDay(opDaysList(pool));
+  renderOpCargo();
+  renderMatrixCargo();
+}
+function opDaysList(pool){
+  return periodDays().filter(pd=>{let k=0;for(const x of pool){const c=classifyDay(x,pd);if(c==='presenca'||c==='falta'||c==='ferias'||c==='folga')k++;}return k>0;});
+}
+function populateOpDay(opDays){
+  const sel=$('opDay'), prev=sel.value, DW=['dom','seg','ter','qua','qui','sex','sáb'];
+  sel.innerHTML=opDays.map(d=>`<option value="${d.iso}">${d.ddmm} · ${DW[d.dow]}</option>`).join('');
+  if(opDays.some(d=>d.iso===prev))sel.value=prev;
+  else if(opDays.length){
+    const pool=dashPool();
+    const wp=[...opDays].reverse().find(pd=>pool.some(x=>classifyDay(x,pd)==='presenca'));
+    sel.value=(wp||opDays[opDays.length-1]).iso;
+  }
+}
+function renderOpCargo(){
+  const pool=dashPool(), days=opDaysList(pool);
+  const pd=days.find(d=>d.iso===$('opDay').value)||days[days.length-1];
+  if(!pd){$('opCargo').innerHTML='<tbody><tr><td class="mut">Sem dias com dados.</td></tr></tbody>';return;}
+  const groups={}; for(const x of pool){const c=x.emp.cargo||'—';(groups[c]=groups[c]||[]).push(x);}
+  const cargos=Object.keys(groups).sort();
+  let h='<thead><tr><th>Cargo</th><th class="num">Escalados</th><th class="num">Presentes</th><th class="num">%</th><th class="num">Faltas</th><th class="num">Férias/Afast.</th><th class="num">Folga</th></tr></thead><tbody>';
+  cargos.forEach((c,idx)=>{
+    let pres=0,falta=0,fer=0,folga=0; const aus=[];
+    for(const x of groups[c]){const k=classifyDay(x,pd);
+      if(k==='presenca')pres++;
+      else if(k==='falta'){falta++;aus.push(`${x.emp.name} — Falta`);}
+      else if(k==='ferias'){fer++;aus.push(`${x.emp.name} — ${feriasTipo(x.emp.mat,pd)}`);}
+      else if(k==='folga')folga++;
+    }
+    const esc=pres+falta+fer, pct=esc?Math.round(pres/esc*100)+'%':'—';
+    const stc=esc&&pres===0?'neg':'';
+    h+=`<tr class="opRow" data-c="${idx}" style="cursor:pointer"><td>${c}</td><td class="num">${esc}</td><td class="num ${stc}">${pres}</td><td class="num">${pct}</td><td class="num ${falta?'neg':''}">${falta||'—'}</td><td class="num">${fer||'—'}</td><td class="num">${folga||'—'}</td></tr>`;
+    h+=`<tr class="opDet hidden" data-c="${idx}"><td colspan="7" class="note" style="color:#9aa3b2">${aus.length?('Ausentes: '+aus.join('  ·  ')):'Ninguém ausente (todos presentes ou de folga).'}</td></tr>`;
+  });
+  h+='</tbody>'; $('opCargo').innerHTML=h;
+  document.querySelectorAll('.opRow').forEach(r=>r.onclick=()=>document.querySelector('.opDet[data-c="'+r.dataset.c+'"]').classList.toggle('hidden'));
+}
+function renderMatrixCargo(){
+  const pool=dashPool(), days=opDaysList(pool);
+  const groups={}; for(const x of pool){const c=x.emp.cargo||'—';(groups[c]=groups[c]||[]).push(x);}
+  const cargos=Object.keys(groups).sort();
+  const DW=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  let h='<thead><tr><th>Cargo</th>'+days.map(d=>`<th class="num" title="${DW[d.dow]}">${d.dd}</th>`).join('')+'</tr></thead><tbody>';
+  for(const c of cargos){
+    h+=`<tr><td>${c}</td>`;
+    for(const d of days){
+      let pres=0,esc=0;
+      for(const x of groups[c]){const k=classifyDay(x,d);if(k==='presenca')pres++;if(k==='presenca'||k==='falta'||k==='ferias')esc++;}
+      h+=`<td class="num ${esc>0&&pres===0?'neg':''}">${pres||(esc>0?'0':'·')}</td>`;
+    }
+    h+='</tr>';
+  }
+  h+='</tbody>'; $('matrixCargo').innerHTML=h;
 }
 function renderDashKpis(perDay,pool){
   const nd=perDay.length;
@@ -747,6 +833,98 @@ function renderFerias(){
   document.querySelectorAll('.delF').forEach(a=>a.onclick=e=>{e.preventDefault();FERIAS.splice(+a.dataset.i,1);localStorage.setItem('ponto_ferias',JSON.stringify(FERIAS));renderFerias();renderDashboard();});
 }
 
+/* ---------- LEITURA DA PLANILHA (JSONP) ---------- */
+let PDFDATA=null, SAVED=[];
+function endpointURL(){return (($('endpoint')&&$('endpoint').value)||($('endpoint2')&&$('endpoint2').value)||localStorage.getItem('ponto_endpoint')||'').trim();}
+function saveEndpoint(url){localStorage.setItem('ponto_endpoint',url);if($('endpoint'))$('endpoint').value=url;if($('endpoint2'))$('endpoint2').value=url;}
+function jsonp(params){
+  return new Promise((res,rej)=>{
+    const url=endpointURL();
+    if(!/\/exec/.test(url)){rej(new Error('URL /exec ausente'));return;}
+    const cb='__cb'+Date.now()+Math.floor(Math.random()*1e4);
+    const s=document.createElement('script');
+    const clean=()=>{delete window[cb];s.remove();};
+    window[cb]=d=>{clean();res(d);};
+    const q=new URLSearchParams(Object.assign({},params,{callback:cb,_:Date.now()}));
+    s.src=url+'?'+q.toString();
+    s.onerror=()=>{clean();rej(new Error('não consegui contatar a planilha'));};
+    document.body.appendChild(s);
+    setTimeout(()=>{if(window[cb]){clean();rej(new Error('tempo esgotado'));}},15000);
+  });
+}
+const STMAP={'OK':'ok','OK (HE)':'he','Atraso':'atraso','Revisar (batida impar)':'impar','Deficit':'deficit','Falta':'falta','Sem marcacoes':'semreg','Folga':'off','Folga trabalhada':'folgaT','Em andamento':'andamento'};
+const DOWMAP={'Domingo':0,'Segunda':1,'Terca':2,'Quarta':3,'Quinta':4,'Sexta':5,'Sabado':6};
+function parseHM(s){s=String(s==null?'':s).trim();if(!s)return 0;const neg=s[0]==='-';s=s.replace('-','');const p=s.split(':');return (neg?-1:1)*((+p[0]||0)*60+(+p[1]||0));}
+function buildFromHistory(periodo,resumo,diario){
+  const byMat={};
+  for(const r of resumo){
+    const mat=String(r['Matricula']);
+    byMat[mat]={emp:{mat,name:r['Nome'],dept:r['Departamento'],cargo:r['Cargo']||'',adm:'',periodo},
+      turno:r['Turno'],workdays:+r['DiasTrab']||0,
+      trab:parseHM(r['Trabalhado']),prev:parseHM(r['Previsto']),saldo:parseHM(r['Saldo']),
+      he50:parseHM(r['HE 50%']),he100:parseHM(r['HE 100%']),
+      faltas:+r['Faltas']||0,atrasos:+r['Atrasos']||0,impar:+r['Batida impar']||0,
+      semReg:String(r['Sem marcacoes'])==='Sim',overall:STMAP[r['Status']]||'ok',exp:0,dayrows:[]};
+  }
+  for(const d of diario){
+    const mat=String(d['Matricula']), e=byMat[mat]; if(!e)continue;
+    const st=STMAP[d['Status']]||'ok';
+    const marc=String(d['Marcacoes']||'').trim();
+    e.dayrows.push({day:String(d['Dia']),ddmm:String(d['Data']),
+      dow:DOWMAP[d['Dia da semana']]!==undefined?DOWMAP[d['Dia da semana']]:null,
+      scheduled:String(d['Escalado'])==='Sim',jorn:marc?marc.split(/\s+/):[],
+      worked:parseHM(d['Trabalhado']),extra:parseHM(d['Extra']),st,late:st==='atraso',
+      notes:d['Observacao']?[String(d['Observacao'])]:[]});
+  }
+  return Object.values(byMat).sort((a,b)=>a.emp.name.localeCompare(b.emp.name));
+}
+function fillPeriodSelects(){
+  const opts=SAVED.map(p=>`<option value="${p.periodo}">${p.periodo} (${p.colaboradores})</option>`).join('');
+  $('periodSel').innerHTML=(PDFDATA?`<option value="__pdf">PDF carregado: ${PDFDATA[0].emp.periodo||'atual'}</option>`:'')+opts;
+  $('periodSel2').innerHTML='<option value="">— escolha —</option>'+opts;
+  $('perSel2Wrap').classList.toggle('hidden',!SAVED.length);
+}
+function refreshViews(){
+  const deps=[...new Set(DATA.map(x=>x.emp.dept).filter(Boolean))].sort();
+  const turs=[...new Set(DATA.map(x=>x.turno))].sort();
+  $('fDep').innerHTML='<option value="">Todos os departamentos</option>'+deps.map(d=>`<option>${d}</option>`).join('');
+  $('fTurno').innerHTML='<option value="">Todos os turnos</option>'+turs.map(t=>`<option>${t}</option>`).join('');
+  renderTable();
+  populateDashFilters();
+  if(!$('panelDash').classList.contains('hidden'))renderDashboard();
+}
+function activate(arr,label){
+  DATA=arr;
+  $('results').classList.remove('hidden');
+  $('periodChip').textContent=`${arr.length} colaboradores · ${label}`;
+  refreshViews();
+}
+async function buscarPeriodos(msgEl){
+  const url=endpointURL();
+  if(!/\/exec/.test(url)){msgEl.className='status err on';msgEl.textContent='Cole a URL /exec antes.';return;}
+  saveEndpoint(url);
+  msgEl.className='status work on';msgEl.textContent='Buscando períodos salvos…';
+  try{
+    const d=await jsonp({action:'periodos'});
+    if(!d.ok)throw new Error(d.error||'erro');
+    SAVED=d.periodos||[]; fillPeriodSelects();
+    msgEl.className='status ok on';msgEl.textContent=SAVED.length?`${SAVED.length} período(s) na planilha.`:'Nenhum período salvo ainda — grave um primeiro.';
+  }catch(e){msgEl.className='status err on';msgEl.textContent='Falha: '+e.message+'. Reimplante o script (v2) como “Qualquer pessoa” e tente de novo.';}
+}
+async function abrirPeriodo(periodo,msgEl){
+  if(!periodo)return;
+  msgEl.className='status work on';msgEl.textContent='Carregando '+periodo+'…';
+  try{
+    const d=await jsonp({action:'periodo',periodo});
+    if(!d.ok)throw new Error(d.error||'erro');
+    const arr=buildFromHistory(periodo,d.resumo||[],d.diario||[]);
+    if(!arr.length)throw new Error('período sem dados');
+    activate(arr,periodo+' (planilha)');
+    $('periodSel').value=periodo; $('periodSel2').value=periodo;
+    msgEl.className='status ok on';msgEl.textContent='Período '+periodo+' carregado da planilha.';
+  }catch(e){msgEl.className='status err on';msgEl.textContent='Falha ao carregar: '+e.message;}
+}
+
 /* eventos */
 $('pickBtn').onclick=()=>$('file').click();
 $('file').onchange=e=>handleFile(e.target.files[0]);
@@ -760,7 +938,21 @@ $('csvBtn').onclick=csvDiario; $('csvResBtn').onclick=csvResumo;
 $('syncBtn').onclick=syncSheets;
 $('testBtn').onclick=testConn;
 $('ov').onclick=e=>{if(e.target.id==='ov')$('ov').classList.remove('on');};
-$('endpoint').value=localStorage.getItem('ponto_endpoint')||'';
+const _ep=localStorage.getItem('ponto_endpoint')||'';
+if($('endpoint'))$('endpoint').value=_ep;
+if($('endpoint2'))$('endpoint2').value=_ep;
+['endpoint','endpoint2'].forEach(id=>$(id)&&$(id).addEventListener('change',()=>saveEndpoint($(id).value.trim())));
+
+/* histórico / períodos */
+$('loadHist2').onclick=()=>buscarPeriodos($('histMsg'));
+$('periodSel2').onchange=()=>abrirPeriodo($('periodSel2').value,$('histMsg'));
+$('loadHist').onclick=()=>buscarPeriodos($('periodMsg'));
+$('periodSel').onchange=()=>{
+  const v=$('periodSel').value;
+  if(v==='__pdf'){ if(PDFDATA)activate(PDFDATA,'PDF: '+(PDFDATA[0].emp.periodo||'atual')); }
+  else abrirPeriodo(v,$('periodMsg'));
+};
+$('opDay').onchange=renderOpCargo;
 
 /* abas */
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
