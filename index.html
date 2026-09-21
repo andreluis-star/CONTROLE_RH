@@ -78,6 +78,17 @@ details.help summary{cursor:pointer;color:var(--acc);font-size:12.5px}
 code{background:#0c0e12;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12px}
 .hidden{display:none}
 footer{margin-top:26px;color:var(--mut);font-size:11.5px;text-align:center}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{background:transparent;border:none;border-bottom:2px solid transparent;border-radius:0;color:var(--mut);padding:10px 16px;font-weight:600}
+.tab.active{color:var(--txt);border-bottom-color:var(--acc)}
+.tab:hover{color:var(--txt)}
+.namebox{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:9px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:3px;background:var(--panel2)}
+.namebox label{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--txt);font-weight:400;cursor:pointer}
+.chartwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:12px}
+.leg{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:10px;color:var(--mut)}
+.leg i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+tfoot th{background:var(--panel2);color:var(--txt);border-top:2px solid var(--line)}
+.delF{text-decoration:none;font-weight:700}
 </style>
 </head>
 <body>
@@ -114,7 +125,13 @@ footer{margin-top:26px;color:var(--mut);font-size:11.5px;text-align:center}
 
   <!-- RESULTS -->
   <section id="results" class="hidden">
-    <div class="kpis" id="kpis" style="margin-top:16px"></div>
+    <div class="tabs" id="tabs" style="margin-top:16px">
+      <button class="tab active" data-tab="colab">👥 Colaboradores</button>
+      <button class="tab" data-tab="dash">📊 Dashboard diário</button>
+    </div>
+
+    <div id="panelColab">
+    <div class="kpis" id="kpis" style="margin-top:14px"></div>
 
     <div class="card" style="margin-top:16px">
       <div class="toolbar">
@@ -184,6 +201,48 @@ footer{margin-top:26px;color:var(--mut);font-size:11.5px;text-align:center}
         </ol>
         <div class="mut small">A planilha de destino já está fixada no script (ID <code>1Jf_SmG…Vb14</code>). Cada importação atualiza o período correspondente sem duplicar.</div>
       </details>
+    </div>
+    </div><!-- /panelColab -->
+
+    <div id="panelDash" class="hidden">
+      <div class="card" style="margin-top:14px">
+        <div class="rowflex">
+          <label class="fld">Departamento<select id="dDep"><option value="">Todos</option></select></label>
+          <label class="fld">Cargo<select id="dCargo"><option value="">Todos</option></select></label>
+          <label class="fld">Turno<select id="dTurno"><option value="">Todos</option></select></label>
+          <label class="fld">&nbsp;<span class="chip"><input type="checkbox" id="dWeekend" checked> mostrar folgas</span></label>
+          <div class="sp"></div>
+          <button id="dAll">Marcar todos</button><button id="dNone">Limpar</button>
+        </div>
+        <div class="mut small" style="margin:10px 0 6px">Colaboradores considerados (desmarque para excluir do painel):</div>
+        <div class="namebox" id="nameList"></div>
+      </div>
+
+      <div class="kpis" id="dKpis" style="margin-top:14px"></div>
+
+      <div class="card" style="margin-top:14px">
+        <h3>Colaboradores por dia · por ocorrência</h3>
+        <div class="chartwrap" id="chart" style="margin-top:10px"></div>
+        <div class="leg" id="chartLeg"></div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));margin-top:14px">
+        <div class="card"><h3>Detalhe por dia</h3><div class="tablewrap" style="margin-top:8px"><table id="dayTbl"></table></div></div>
+        <div class="card">
+          <h3>Por setor / departamento</h3>
+          <div class="tablewrap" style="margin-top:8px"><table id="depTbl"></table></div>
+          <h3 style="margin-top:18px">Férias / afastamentos</h3>
+          <div class="mut small" style="margin:4px 0 8px">Lance aqui para separar esses dias das faltas. Fica salvo no navegador.</div>
+          <div class="rowflex">
+            <label class="fld">Colaborador<select id="fMat"></select></label>
+            <label class="fld">Tipo<select id="fTipo"><option>Férias</option><option>Atestado</option><option>Afastamento</option><option>Folga extra</option></select></label>
+            <label class="fld">Início<input type="date" id="fIni"></label>
+            <label class="fld">Fim<input type="date" id="fFim"></label>
+            <button id="fAdd" class="primary">+ Adicionar</button>
+          </div>
+          <div id="fList" style="margin-top:10px"></div>
+        </div>
+      </div>
     </div>
   </section>
 </div>
@@ -546,7 +605,146 @@ async function handleFile(file){
   $('fTurno').innerHTML='<option value="">Todos os turnos</option>'+turs.map(t=>`<option>${t}</option>`).join('');
   $('results').classList.remove('hidden');
   renderTable();
+  populateDashFilters();
   $('results').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+/* ---------- DASHBOARD ---------- */
+const OCC=[['presenca','Presenças','#22c55e'],['falta','Faltas','#ef4444'],['ferias','Férias/Afast.','#38bdf8'],['folga','Folga','#6b7280']];
+let FERIAS=JSON.parse(localStorage.getItem('ponto_ferias')||'[]');
+
+function periodDays(){
+  const pi=periodInfo(DATA[0].emp.periodo); if(!pi)return [];
+  const start=new Date(pi.y1,pi.mo1-1,pi.d1), end=new Date(pi.y2,pi.mo2-1,pi.d2);
+  const out=[]; let d=new Date(start);
+  while(d<=end){
+    const dd=String(d.getDate()).padStart(2,'0'), mm=String(d.getMonth()+1).padStart(2,'0');
+    out.push({date:new Date(d),dd,ddmm:dd+'/'+mm,iso:d.getFullYear()+'-'+mm+'-'+dd,dow:d.getDay()});
+    d.setDate(d.getDate()+1);
+  }
+  return out;
+}
+function feriasTipo(mat,pd){
+  for(const f of FERIAS) if(f.mat===mat && f.ini<=pd.iso && pd.iso<=f.fim) return 'ferias';
+  return null;
+}
+function classifyDay(x,pd){
+  if(feriasTipo(x.emp.mat,pd))return 'ferias';
+  if(x.emp.adm){const p=x.emp.adm.split('/'); if(p.length===3){const admIso=p[2]+'-'+p[1]+'-'+p[0]; if(pd.iso<admIso)return 'nd';}}
+  const row=x.dayrows.find(r=>r.ddmm===pd.ddmm);
+  if(!row)return 'nd';
+  if(row.jorn.length>0)return 'presenca';
+  if(row.st==='falta')return 'falta';
+  if(row.scheduled)return 'pendente';   // escalado mas em branco = ainda não ocorreu
+  return 'folga';
+}
+function dashPool(){
+  const dep=$('dDep').value,car=$('dCargo').value,tur=$('dTurno').value;
+  let pool=DATA.filter(x=>(!dep||x.emp.dept===dep)&&(!car||x.emp.cargo===car)&&(!tur||x.turno===tur));
+  const names=new Set([...document.querySelectorAll('.nmchk:checked')].map(c=>c.value));
+  return pool.filter(x=>names.has(x.emp.mat));
+}
+function renderDashboard(){
+  if(!DATA)return;
+  const pool=dashPool(), days=periodDays(), showFolga=$('dWeekend').checked;
+  const perDay=[], depAgg={};
+  for(const pd of days){
+    const c={presenca:0,falta:0,ferias:0,folga:0,pendente:0,nd:0};
+    for(const x of pool){
+      const k=classifyDay(x,pd); c[k]++;
+      if(k==='presenca'||k==='falta'||k==='ferias'){
+        (depAgg[x.emp.dept||'—']=depAgg[x.emp.dept||'—']||{presenca:0,falta:0,ferias:0})[k]++;
+      }
+    }
+    const known=c.presenca+c.falta+c.ferias+c.folga;
+    if(known===0)continue;                                   // dia futuro/sem dados
+    if(!showFolga && (c.presenca+c.falta+c.ferias)===0)continue;
+    perDay.push({pd,c});
+  }
+  renderDashKpis(perDay,pool);
+  renderChart(perDay);
+  renderDayTable(perDay);
+  renderDepTable(depAgg,perDay.length);
+}
+function renderDashKpis(perDay,pool){
+  const nd=perDay.length;
+  const sumP=perDay.reduce((a,d)=>a+d.c.presenca,0), sumF=perDay.reduce((a,d)=>a+d.c.falta,0);
+  const media=nd?Math.round(sumP/nd):0;
+  let pico={v:-1,dd:''}; perDay.forEach(d=>{if(d.c.presenca>pico.v)pico={v:d.c.presenca,dd:d.pd.ddmm};});
+  const esc=sumP+sumF, pct=esc?Math.round(sumP/esc*100):0;
+  const feriasN=new Set(FERIAS.filter(f=>pool.some(x=>x.emp.mat===f.mat)).map(f=>f.mat)).size;
+  $('dKpis').innerHTML=[
+    ['info',pool.length,'Colaboradores no filtro'],
+    ['ok',media,'Média presentes/dia'],
+    ['ok',pico.v<0?'—':pico.v+' · '+pico.dd,'Pico de presentes'],
+    ['bad',sumF,'Total de faltas'],
+    ['info',feriasN,'Em férias/afastamento'],
+    [pct>=90?'ok':'warn',pct+'%','% presença média'],
+  ].map(([c,v,l])=>`<div class="kpi ${c}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+}
+function renderChart(perDay){
+  if(!perDay.length){$('chart').innerHTML='<div class="mut small">Sem dias com dados para o filtro atual.</div>';$('chartLeg').innerHTML='';return;}
+  const stacks=OCC, DW=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const padL=40,padB=48,padT=14,H=300;
+  const step=44, W=Math.max(560,padL+perDay.length*step+14), bw=Math.min(30,step*0.66);
+  const maxY=Math.max(1,...perDay.map(d=>d.c.presenca+d.c.falta+d.c.ferias+d.c.folga));
+  const y=v=>padT+(H-padT-padB)*(1-v/maxY);
+  let g='';
+  const ticks=4;
+  for(let i=0;i<=ticks;i++){const v=Math.round(maxY*i/ticks),yy=y(v);
+    g+=`<line x1="${padL}" y1="${yy}" x2="${W-6}" y2="${yy}" stroke="#2a2f3a"/><text x="${padL-6}" y="${yy+3}" fill="#9aa3b2" font-size="10" text-anchor="end">${v}</text>`;}
+  perDay.forEach((d,i)=>{
+    const x=padL+step*i+(step-bw)/2; let acc=0;
+    for(const [k,,col] of stacks){const val=d.c[k]||0; if(!val)continue;
+      const h=(H-padT-padB)*(val/maxY), yy=y(acc+val);
+      g+=`<rect x="${x}" y="${yy}" width="${bw}" height="${h}" fill="${col}" rx="1"><title>${d.pd.ddmm} · ${k}: ${val}</title></rect>`; acc+=val;}
+    if(d.c.presenca)g+=`<text x="${x+bw/2}" y="${y(acc)-4}" fill="#e7eaf0" font-size="9" text-anchor="middle">${d.c.presenca}</text>`;
+    g+=`<text x="${x+bw/2}" y="${H-padB+15}" fill="#9aa3b2" font-size="9" text-anchor="middle">${d.pd.dd}</text>`+
+       `<text x="${x+bw/2}" y="${H-padB+27}" fill="#6b7280" font-size="8" text-anchor="middle">${DW[d.pd.dow]}</text>`;
+  });
+  $('chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${g}</svg>`;
+  $('chartLeg').innerHTML=stacks.map(([k,l,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join('');
+}
+function renderDayTable(perDay){
+  const DW=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  let tp=0,tf=0,tfe=0,tfo=0;
+  let h='<thead><tr><th>Data</th><th>Dia</th><th class="num">Present.</th><th class="num">Faltas</th><th class="num">Férias</th><th class="num">Folga</th><th class="num">%Pres</th></tr></thead><tbody>';
+  for(const {pd,c} of perDay){const esc=c.presenca+c.falta,pct=esc?Math.round(c.presenca/esc*100)+'%':'—';
+    tp+=c.presenca;tf+=c.falta;tfe+=c.ferias;tfo+=c.folga;
+    h+=`<tr><td>${pd.ddmm}</td><td>${DW[pd.dow]}</td><td class="num">${c.presenca}</td><td class="num ${c.falta?'neg':''}">${c.falta||'—'}</td><td class="num">${c.ferias||'—'}</td><td class="num">${c.folga||'—'}</td><td class="num">${pct}</td></tr>`;}
+  h+=`</tbody><tfoot><tr><th colspan="2">Total</th><th class="num">${tp}</th><th class="num">${tf}</th><th class="num">${tfe}</th><th class="num">${tfo}</th><th></th></tr></tfoot>`;
+  $('dayTbl').innerHTML=h;
+}
+function renderDepTable(depAgg,ndays){
+  const rows=Object.entries(depAgg).sort((a,b)=>b[1].presenca-a[1].presenca);
+  let h='<thead><tr><th>Departamento</th><th class="num">Presenças</th><th class="num">Faltas</th><th class="num">Férias</th><th class="num">Média/dia</th></tr></thead><tbody>';
+  for(const [dep,c] of rows){const med=ndays?(c.presenca/ndays).toFixed(1):'—';
+    h+=`<tr><td>${dep}</td><td class="num">${c.presenca}</td><td class="num ${c.falta?'neg':''}">${c.falta||'—'}</td><td class="num">${c.ferias||'—'}</td><td class="num">${med}</td></tr>`;}
+  h+='</tbody>'; $('depTbl').innerHTML=h||'<tbody><tr><td class="mut">Sem dados.</td></tr></tbody>';
+}
+function rebuildNames(){
+  const dep=$('dDep').value,car=$('dCargo').value,tur=$('dTurno').value;
+  const pool=DATA.filter(x=>(!dep||x.emp.dept===dep)&&(!car||x.emp.cargo===car)&&(!tur||x.turno===tur));
+  $('nameList').innerHTML=pool.map(x=>`<label><input type="checkbox" class="nmchk" value="${x.emp.mat}" checked> ${x.emp.name} <span class="mut">(${x.emp.mat})</span></label>`).join('')||'<span class="mut small">Nenhum colaborador nesse filtro.</span>';
+  document.querySelectorAll('.nmchk').forEach(c=>c.onchange=renderDashboard);
+}
+function populateDashFilters(){
+  const deps=[...new Set(DATA.map(x=>x.emp.dept).filter(Boolean))].sort();
+  const cars=[...new Set(DATA.map(x=>x.emp.cargo).filter(Boolean))].sort();
+  const turs=[...new Set(DATA.map(x=>x.turno))].sort();
+  $('dDep').innerHTML='<option value="">Todos</option>'+deps.map(d=>`<option>${d}</option>`).join('');
+  $('dCargo').innerHTML='<option value="">Todos</option>'+cars.map(c=>`<option>${c}</option>`).join('');
+  $('dTurno').innerHTML='<option value="">Todos</option>'+turs.map(t=>`<option>${t}</option>`).join('');
+  $('fMat').innerHTML=DATA.map(x=>`<option value="${x.emp.mat}">${x.emp.name} (${x.emp.mat})</option>`).join('');
+  const pi=periodInfo(DATA[0].emp.periodo);
+  if(pi){const s=new Date(pi.y1,pi.mo1-1,pi.d1),e=new Date(pi.y2,pi.mo2-1,pi.d2);
+    const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    $('fIni').value=iso(s);$('fFim').value=iso(e);}
+  rebuildNames(); renderFerias();
+}
+function renderFerias(){
+  $('fList').innerHTML=FERIAS.length?FERIAS.map((f,i)=>`<span class="chip" style="display:inline-flex;gap:8px;margin:2px">${f.nome} · ${f.tipo} · ${f.ini}→${f.fim} <a href="#" class="delF" data-i="${i}">✕</a></span>`).join(''):'<span class="mut small">Nenhum lançamento ainda.</span>';
+  document.querySelectorAll('.delF').forEach(a=>a.onclick=e=>{e.preventDefault();FERIAS.splice(+a.dataset.i,1);localStorage.setItem('ponto_ferias',JSON.stringify(FERIAS));renderFerias();renderDashboard();});
 }
 
 /* eventos */
@@ -563,6 +761,27 @@ $('syncBtn').onclick=syncSheets;
 $('testBtn').onclick=testConn;
 $('ov').onclick=e=>{if(e.target.id==='ov')$('ov').classList.remove('on');};
 $('endpoint').value=localStorage.getItem('ponto_endpoint')||'';
+
+/* abas */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));t.classList.add('active');
+  const tab=t.dataset.tab;
+  $('panelColab').classList.toggle('hidden',tab!=='colab');
+  $('panelDash').classList.toggle('hidden',tab!=='dash');
+  if(tab==='dash')renderDashboard();
+});
+/* filtros dashboard */
+['dDep','dCargo','dTurno'].forEach(id=>$(id).addEventListener('change',()=>{rebuildNames();renderDashboard();}));
+$('dWeekend').addEventListener('change',renderDashboard);
+$('dAll').onclick=()=>{document.querySelectorAll('.nmchk').forEach(c=>c.checked=true);renderDashboard();};
+$('dNone').onclick=()=>{document.querySelectorAll('.nmchk').forEach(c=>c.checked=false);renderDashboard();};
+$('fAdd').onclick=()=>{
+  const mat=$('fMat').value; const e=DATA&&DATA.find(x=>x.emp.mat===mat);
+  if(!e||!$('fIni').value||!$('fFim').value)return;
+  FERIAS.push({mat,nome:e.emp.name,tipo:$('fTipo').value,ini:$('fIni').value,fim:$('fFim').value});
+  localStorage.setItem('ponto_ferias',JSON.stringify(FERIAS));
+  renderFerias();renderDashboard();
+};
 </script>
 </body>
 </html>
