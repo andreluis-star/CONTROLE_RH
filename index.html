@@ -254,7 +254,12 @@ tfoot th{background:var(--panel2);color:var(--txt);border-top:2px solid var(--li
           </div>
         </div>
         <div id="cargoPick" class="hidden" style="margin-top:10px">
-          <div class="mut small" style="margin-bottom:5px">Cargos no gráfico (desmarque para ocultar):</div>
+          <div class="rowflex">
+            <label class="fld">De o dia<select id="rgFrom"></select></label>
+            <label class="fld">até o dia<select id="rgTo"></select></label>
+            <div class="sp"></div>
+          </div>
+          <div class="mut small" style="margin:10px 0 5px">Cargos no gráfico (desmarque para ocultar):</div>
           <div id="cargoChips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         </div>
         <div class="chartwrap" id="chart" style="margin-top:10px"></div>
@@ -784,7 +789,7 @@ function renderDashKpis(perDay,pool){
     [pct>=90?'ok':'warn',pct+'%','% presença média'],
   ].map(([c,v,l])=>`<div class="kpi ${c}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
 }
-function renderChart(perDay){ if(CHARTMODE==='cargo') renderChartByCargo(perDay); else renderChartGeral(perDay); }
+function renderChart(perDay){ if(CHARTMODE==='cargo') renderChartByCargo(); else renderChartGeral(perDay); }
 function renderChartGeral(perDay){
   if(!perDay.length){$('chart').innerHTML='<div class="mut small">Sem dias com dados para o filtro atual.</div>';$('chartLeg').innerHTML='';return;}
   const stacks=OCC, DW=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
@@ -808,40 +813,36 @@ function renderChartGeral(perDay){
   $('chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${g}</svg>`;
   $('chartLeg').innerHTML=stacks.map(([k,l,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join('');
 }
-function renderChartByCargo(perDay){
+function renderChartByCargo(){
   const pool=dashPool();
   const sel=new Set([...document.querySelectorAll('.cgchk:checked')].map(c=>c.value));
   const cargos=[...new Set(pool.map(x=>x.emp.cargo||'—'))].filter(c=>sel.has(c)).sort();
-  if(!perDay.length||!cargos.length){$('chart').innerHTML='<div class="mut small">Selecione ao menos um cargo e um dia com dados.</div>';$('chartLeg').innerHTML='';return;}
-  const data=perDay.map(({pd})=>{
-    const per={}; for(const c of cargos)per[c]={presenca:0,falta:0,ferias:0,folga:0};
-    for(const x of pool){const cg=x.emp.cargo||'—'; if(!per[cg])continue; const k=classifyDay(x,pd); if(per[cg][k]!==undefined)per[cg][k]++;}
-    return {pd,per};
-  });
-  const maxY=Math.max(1,...data.flatMap(d=>cargos.map(c=>{const v=d.per[c];return v.presenca+v.falta+v.ferias+v.folga;})));
-  const barW=Math.min(22,Math.max(9,130/cargos.length)), gap=3, groupPad=18;
-  const groupW=cargos.length*(barW+gap)-gap+groupPad;
-  const padL=40,padB=54,padT=14,H=330, W=Math.max(560,padL+data.length*groupW+14);
+  const allDays=periodDays();
+  let f=$('rgFrom').value||(allDays[0]&&allDays[0].iso), t=$('rgTo').value||(allDays[allDays.length-1]&&allDays[allDays.length-1].iso);
+  const lo=f<=t?f:t, hi=f<=t?t:f;
+  const days=allDays.filter(d=>d.iso>=lo&&d.iso<=hi);
+  if(!cargos.length||!days.length){$('chart').innerHTML='<div class="mut small">Selecione ao menos um cargo e um intervalo de dias.</div>';$('chartLeg').innerHTML='';return;}
+  const agg={}; for(const c of cargos)agg[c]={presenca:0,falta:0,ferias:0,folga:0};
+  for(const x of pool){const cg=x.emp.cargo||'—'; if(!agg[cg])continue; for(const d of days){const k=classifyDay(x,d); if(agg[cg][k]!==undefined)agg[cg][k]++;}}
+  const totals=cargos.map(c=>agg[c].presenca+agg[c].falta+agg[c].ferias+agg[c].folga);
+  const maxY=Math.max(1,...totals);
+  const padL=40,padB=96,padT=18,H=360;
+  const step=Math.max(70,Math.min(130,760/cargos.length)), barW=Math.min(54,step*0.62);
+  const W=Math.max(520,padL+cargos.length*step+20);
   const y=v=>padT+(H-padT-padB)*(1-v/maxY);
-  const DW=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-  const abbr=c=>c.split(/\s+/).filter(w=>w.length>2).map(w=>w[0]).join('').slice(0,3).toUpperCase()||c.slice(0,3).toUpperCase();
   let g='';
   for(let i=0;i<=4;i++){const val=Math.round(maxY*i/4),yy=y(val);g+=`<line x1="${padL}" y1="${yy}" x2="${W-6}" y2="${yy}" stroke="#2a2f3a"/><text x="${padL-6}" y="${yy+3}" fill="#9aa3b2" font-size="10" text-anchor="end">${val}</text>`;}
-  data.forEach((d,gi)=>{
-    const gx=padL+groupW*gi+groupPad/2;
-    if(gi>0)g+=`<line x1="${padL+groupW*gi}" y1="${padT}" x2="${padL+groupW*gi}" y2="${H-padB}" stroke="#20242e"/>`;
-    cargos.forEach((c,ci)=>{
-      const x=gx+ci*(barW+gap), v=d.per[c]; let acc=0;
-      for(const [k,,col] of OCC){const val=v[k]; if(!val)continue; const h=(H-padT-padB)*(val/maxY),yy=y(acc+val); g+=`<rect x="${x}" y="${yy}" width="${barW}" height="${h}" fill="${col}"><title>${d.pd.ddmm} · ${c} · ${k}: ${val}</title></rect>`; acc+=val;}
-      const cx=x+barW/2;
-      g+=`<text x="${cx}" y="${H-padB+12}" fill="#8590a2" font-size="8" text-anchor="end" transform="rotate(-90 ${cx} ${H-padB+12})">${abbr(c)}</text>`;
-    });
-    const cx=gx+(cargos.length*(barW+gap)-gap)/2;
-    g+=`<text x="${cx}" y="${H-padB+38}" fill="#9aa3b2" font-size="9.5" text-anchor="middle">${d.pd.dd}</text><text x="${cx}" y="${H-padB+49}" fill="#6b7280" font-size="8" text-anchor="middle">${DW[d.pd.dow]}</text>`;
+  cargos.forEach((c,i)=>{
+    const x=padL+step*i+(step-barW)/2, v=agg[c]; let acc=0;
+    for(const [k,,col] of OCC){const val=v[k]; if(!val)continue; const h=(H-padT-padB)*(val/maxY),yy=y(acc+val); g+=`<rect x="${x}" y="${yy}" width="${barW}" height="${h}" fill="${col}"><title>${c} · ${k}: ${val}</title></rect>`; acc+=val;}
+    if(totals[i])g+=`<text x="${x+barW/2}" y="${y(totals[i])-5}" fill="#e7eaf0" font-size="11" text-anchor="middle" font-weight="600">${v.presenca}</text>`;
+    const cx=x+barW/2, nome=c.length>26?c.slice(0,25)+'…':c;
+    g+=`<text x="${cx}" y="${H-padB+16}" fill="#c7cdd8" font-size="9.5" text-anchor="end" transform="rotate(-40 ${cx} ${H-padB+16})">${nome}</text>`;
   });
   $('chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${g}</svg>`;
+  const dl=days.length===1?days[0].ddmm:(lo.split('-').reverse().slice(0,2).join('/')+' a '+hi.split('-').reverse().slice(0,2).join('/'));
   $('chartLeg').innerHTML=OCC.map(([k,l,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join('')+
-    ' <span class="mut">· '+cargos.map(c=>`<b style="color:#aeb6c4">${abbr(c)}</b>=${c}`).join(' · ')+'</span>';
+    ` <span class="mut">· intervalo ${dl} · soma de pessoas·dia · nº no topo = presenças</span>`;
 }
 function renderDayTable(perDay){
   const DW=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
@@ -878,12 +879,21 @@ function populateDashFilters(){
   if(pi){const s=new Date(pi.y1,pi.mo1-1,pi.d1),e=new Date(pi.y2,pi.mo2-1,pi.d2);
     const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     $('fIni').value=iso(s);$('fFim').value=iso(e);}
-  rebuildNames(); renderFerias(); rebuildCargoChips();
+  rebuildNames(); renderFerias(); rebuildCargoChips(); populateRange();
+}
+function populateRange(){
+  const days=periodDays();
+  const opts=days.map(d=>`<option value="${d.iso}">${d.ddmm}</option>`).join('');
+  $('rgFrom').innerHTML=opts; $('rgTo').innerHTML=opts;
+  const wd=opDaysList(DATA);
+  const first=(wd[0]||days[0]), last=(wd[wd.length-1]||days[days.length-1]);
+  if(first)$('rgFrom').value=first.iso;
+  if(last)$('rgTo').value=last.iso;
 }
 function rebuildCargoChips(){
   const cargos=[...new Set(DATA.map(x=>x.emp.cargo).filter(Boolean))].sort();
   $('cargoChips').innerHTML=cargos.map(c=>`<label class="cgchip"><input type="checkbox" class="cgchk" value="${c}" checked> ${c}</label>`).join('')||'<span class="mut small">Sem cargos.</span>';
-  document.querySelectorAll('.cgchk').forEach(c=>c.onchange=renderDashboard);
+  document.querySelectorAll('.cgchk').forEach(c=>c.onchange=renderChartByCargo);
 }
 function renderFerias(){
   $('fList').innerHTML=FERIAS.length?FERIAS.map((f,i)=>`<span class="chip" style="display:inline-flex;gap:8px;margin:2px">${f.nome} · ${f.tipo} · ${f.ini}→${f.fim} <a href="#" class="delF" data-i="${i}">✕</a></span>`).join(''):'<span class="mut small">Nenhum lançamento ainda.</span>';
@@ -1010,6 +1020,7 @@ $('periodSel').onchange=()=>{
   else abrirPeriodo(v,$('periodMsg'));
 };
 $('opDay').onchange=renderOpCargo;
+['rgFrom','rgTo'].forEach(id=>$(id).addEventListener('change',()=>{if(CHARTMODE==='cargo')renderChartByCargo();}));
 $('modeGeral').onclick=()=>{CHARTMODE='geral';setChartMode();};
 $('modeCargo').onclick=()=>{CHARTMODE='cargo';setChartMode();};
 function setChartMode(){
