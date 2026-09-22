@@ -223,6 +223,7 @@ tfoot th{background:var(--panel2);color:var(--txt);border-top:2px solid var(--li
         </label>
         <button id="testBtn">🔌 Testar conexão</button>
         <button class="primary" id="syncBtn">☁ Gravar na planilha</button>
+        <button id="resetBtn" title="Apaga e recria as abas Resumo/Diario/Log">🧹 Recriar abas</button>
       </div>
       <div class="status" id="syncStatus"></div>
       <details class="help">
@@ -707,12 +708,19 @@ function feriasTipo(mat,pd){
   for(const f of FERIAS) if(f.mat===mat && f.ini<=pd.iso && pd.iso<=f.fim) return f.tipo;
   return null;
 }
+function isPresent(row){
+  if(!row)return false;
+  if(row.jorn&&row.jorn.length>0)return true;          // houve marcação de horário = presente
+  if((row.worked||0)>0)return true;                    // reforço: trabalhou minutos
+  if(['ok','he','atraso','folgaT','andamento'].includes(row.st))return true; // reforço pelo status
+  return false;
+}
 function classifyDay(x,pd){
   if(feriasTipo(x.emp.mat,pd))return 'ferias';
   if(x.emp.adm){const p=x.emp.adm.split('/'); if(p.length===3){const admIso=p[2]+'-'+p[1]+'-'+p[0]; if(pd.iso<admIso)return 'nd';}}
   const row=x.dayrows.find(r=>r.ddmm===pd.ddmm);
   if(!row)return 'nd';
-  if(row.jorn.length>0)return 'presenca';
+  if(isPresent(row))return 'presenca';
   if(row.st==='falta')return 'falta';
   if(row.scheduled)return 'pendente';   // escalado mas em branco = ainda não ocorreu
   return 'folga';
@@ -1102,6 +1110,14 @@ drop.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));
 document.querySelectorAll('#tbl th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;SORT.dir=SORT.k===k?-SORT.dir:1;SORT.k=k;renderTable();});
 $('csvBtn').onclick=csvDiario; $('csvResBtn').onclick=csvResumo;
 $('syncBtn').onclick=syncSheets;
+$('resetBtn').onclick=async()=>{
+  const st=$('syncStatus');
+  if(!/\/exec/.test(endpointURL())){st.className='status err on';st.textContent='Cole a URL /exec antes.';return;}
+  if(!confirm('Isto APAGA as abas Resumo, Diario e Log da planilha e recria do zero. Você vai precisar gravar os períodos novamente. Continuar?'))return;
+  st.className='status work on';st.textContent='Recriando abas…';
+  try{const d=await jsonp({action:'reset'});if(!d.ok)throw new Error(d.error||'erro');st.className='status ok on';st.textContent='✅ Abas recriadas limpas. Agora carregue o PDF e clique em Gravar na planilha.';SAVED=[];fillPeriodSelects();}
+  catch(e){st.className='status err on';st.textContent='Falha: '+e.message;}
+};
 $('testBtn').onclick=testConn;
 $('ov').onclick=e=>{if(e.target.id==='ov')$('ov').classList.remove('on');};
 const _ep=localStorage.getItem('ponto_endpoint')||'';
