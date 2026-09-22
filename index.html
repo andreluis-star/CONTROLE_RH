@@ -950,6 +950,14 @@ function jsonp(params){
 const STMAP={'OK':'ok','OK (HE)':'he','Atraso':'atraso','Revisar (batida impar)':'impar','Deficit':'deficit','Falta':'falta','Sem marcacoes':'semreg','Folga':'off','Folga trabalhada':'folgaT','Em andamento':'andamento'};
 const DOWMAP={'Domingo':0,'Segunda':1,'Terca':2,'Quarta':3,'Quinta':4,'Sexta':5,'Sabado':6};
 function parseHM(s){s=String(s==null?'':s).trim();if(!s)return 0;const neg=s[0]==='-';s=s.replace('-','');const p=s.split(':');return (neg?-1:1)*((+p[0]||0)*60+(+p[1]||0));}
+function toDDMM(v){
+  if(v==null||v==='')return '';
+  const s=String(v);
+  let m=s.match(/^(\d{1,2})\/(\d{1,2})(?:\/\d+)?$/); if(m)return m[1].padStart(2,'0')+'/'+m[2].padStart(2,'0');
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m)return m[3]+'/'+m[2];
+  const d=new Date(s); if(!isNaN(d.getTime()))return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  return s;
+}
 function buildFromHistory(periodo,resumo,diario){
   const byMat={};
   for(const r of resumo){
@@ -965,7 +973,9 @@ function buildFromHistory(periodo,resumo,diario){
     const mat=String(d['Matricula']), e=byMat[mat]; if(!e)continue;
     const st=STMAP[d['Status']]||'ok';
     const marc=String(d['Marcacoes']||'').trim();
-    e.dayrows.push({day:String(d['Dia']),ddmm:String(d['Data']),
+    const ddmm=toDDMM(d['Data']);
+    const dia=/^\d{1,2}$/.test(String(d['Dia']))?String(d['Dia']):(ddmm.split('/')[0]||'');
+    e.dayrows.push({day:dia,ddmm,
       dow:DOWMAP[d['Dia da semana']]!==undefined?DOWMAP[d['Dia da semana']]:null,
       scheduled:String(d['Escalado'])==='Sim',jorn:marc?marc.split(/\s+/):[],
       worked:parseHM(d['Trabalhado']),extra:parseHM(d['Extra']),st,late:st==='atraso',
