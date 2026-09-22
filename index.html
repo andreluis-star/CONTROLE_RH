@@ -86,6 +86,16 @@ footer{margin-top:26px;color:var(--mut);font-size:11.5px;text-align:center}
 .segbtn{border:none;border-radius:0;background:var(--panel2);color:var(--mut);padding:7px 12px;font-size:12.5px}
 .segbtn.active{background:var(--acc2);color:#fff}
 .cgchip{display:inline-flex;gap:5px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--txt)}
+table.quadro{border-collapse:collapse;font-size:11px}
+table.quadro th,table.quadro td{border:1px solid #2a2f3a;padding:2px 5px;text-align:center;white-space:nowrap}
+table.quadro td.nm,table.quadro th.nm{position:sticky;left:0;background:var(--panel);text-align:left;min-width:210px;max-width:210px;overflow:hidden;text-overflow:ellipsis;z-index:2;font-weight:600}
+table.quadro thead th.nm{z-index:3;background:var(--panel2)}
+table.quadro th.wknd{background:#12233d}
+table.quadro th.dom{background:#3a1414;color:#ffb0b0}
+table.quadro td.cell{font-weight:800;font-size:10.5px}
+table.quadro tr.grp td{background:#1e222b;color:#cbd5e1;text-align:left;font-weight:700;position:sticky;left:0}
+.qleg span{display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-size:12px;color:var(--mut)}
+.qleg i{display:inline-block;width:24px;height:15px;border-radius:3px;border:1px solid #2a2f3a}
 .namebox{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:9px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:3px;background:var(--panel2)}
 .namebox label{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--txt);font-weight:400;cursor:pointer}
 .chartwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:12px}
@@ -143,6 +153,7 @@ tfoot th{background:var(--panel2);color:var(--txt);border-top:2px solid var(--li
     <div class="tabs" id="tabs" style="margin-top:16px">
       <button class="tab active" data-tab="colab">👥 Colaboradores</button>
       <button class="tab" data-tab="dash">📊 Dashboard diário</button>
+      <button class="tab" data-tab="quadro">🗓️ Quadro de presença</button>
     </div>
 
     <div id="panelColab">
@@ -298,6 +309,23 @@ tfoot th{background:var(--panel2);color:var(--txt);border-top:2px solid var(--li
           </div>
           <div id="fList" style="margin-top:10px"></div>
         </div>
+      </div>
+    </div>
+
+    <div id="panelQuadro" class="hidden">
+      <div class="card" style="margin-top:14px">
+        <div class="rowflex">
+          <label class="fld">Departamento<select id="qDep"><option value="">Todos</option></select></label>
+          <label class="fld">Turno<select id="qTurno"><option value="">Todos</option></select></label>
+          <label class="fld">Cargo<select id="qCargo"><option value="">Todos</option></select></label>
+          <label class="fld">Agrupar por<select id="qGroup"><option value="dept">Departamento</option><option value="cargo">Cargo</option><option value="turno">Turno</option><option value="">Nenhum</option></select></label>
+          <div class="sp"></div>
+          <button id="qCsv">⬇ CSV do quadro</button>
+        </div>
+        <div class="qleg" id="qLeg" style="margin-top:12px"></div>
+      </div>
+      <div class="card" style="margin-top:14px;padding:8px">
+        <div class="tablewrap" id="quadroWrap"><table id="quadro" class="quadro"></table></div>
       </div>
     </div>
   </section>
@@ -958,7 +986,9 @@ function refreshViews(){
   $('fTurno').innerHTML='<option value="">Todos os turnos</option>'+turs.map(t=>`<option>${t}</option>`).join('');
   renderTable();
   populateDashFilters();
+  populateQuadroFilters();
   if(!$('panelDash').classList.contains('hidden'))renderDashboard();
+  if(!$('panelQuadro').classList.contains('hidden'))renderQuadro();
 }
 function activate(arr,label){
   DATA=arr;
@@ -992,6 +1022,65 @@ async function abrirPeriodo(periodo,msgEl){
   }catch(e){msgEl.className='status err on';msgEl.textContent='Falha ao carregar: '+e.message;}
 }
 
+/* ---------- QUADRO DE PRESENÇA ---------- */
+function isoWeek(d){const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);const ys=new Date(Date.UTC(t.getUTCFullYear(),0,1));return Math.ceil(((t-ys)/86400000+1)/7);}
+function qCell(x,pd){
+  const tp=feriasTipo(x.emp.mat,pd);
+  if(tp){const m={'Férias':['FE','#fde047','#3a2c0d'],'Atestado':['AT','#e879f9','#3a1030'],'Afastamento':['AF','#fb923c','#3a1e05'],'Folga extra':['FX','#5eead4','#06302b']}[tp]||['FE','#fde047','#3a2c0d'];return{t:m[0],bg:m[1],fg:m[2]};}
+  const k=classifyDay(x,pd);
+  if(k==='presenca')return{t:'P',bg:'#22c55e',fg:'#06210f'};
+  if(k==='falta')return{t:'F',bg:'#ef4444',fg:'#ffffff'};
+  if(k==='nd')return{t:'NC',bg:'#111827',fg:'#8590a2'};
+  return{t:'',bg:'transparent',fg:''}; // folga / pendente
+}
+function quadroPool(){
+  const dep=$('qDep').value,tur=$('qTurno').value,car=$('qCargo').value;
+  return DATA.filter(x=>(!dep||x.emp.dept===dep)&&(!tur||x.turno===tur)&&(!car||x.emp.cargo===car));
+}
+function populateQuadroFilters(){
+  const deps=[...new Set(DATA.map(x=>x.emp.dept).filter(Boolean))].sort();
+  const turs=[...new Set(DATA.map(x=>x.turno))].sort();
+  const cars=[...new Set(DATA.map(x=>x.emp.cargo).filter(Boolean))].sort();
+  $('qDep').innerHTML='<option value="">Todos</option>'+deps.map(d=>`<option>${d}</option>`).join('');
+  $('qTurno').innerHTML='<option value="">Todos</option>'+turs.map(t=>`<option>${t}</option>`).join('');
+  $('qCargo').innerHTML='<option value="">Todos</option>'+cars.map(c=>`<option>${c}</option>`).join('');
+}
+function renderQuadro(){
+  if(!DATA)return;
+  const grp=$('qGroup').value, pool=quadroPool(), days=periodDays();
+  if(!pool.length||!days.length){$('quadro').innerHTML='<tbody><tr><td class="mut" style="padding:10px">Sem dados para o filtro.</td></tr></tbody>';$('qLeg').innerHTML='';return;}
+  const DW=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+  let sem='<tr><th class="nm">SEMANA</th>', dia='<tr><th class="nm">DIA</th>', dat='<tr><th class="nm">DATA</th>';
+  for(const d of days){
+    const w=d.dow===0?'dom':(d.dow===6?'wknd':'');
+    sem+=`<th class="${w}">${isoWeek(d.date)}</th>`;
+    dia+=`<th class="${w}">${DW[d.dow]}</th>`;
+    dat+=`<th class="${w}">${d.ddmm}</th>`;
+  }
+  sem+='</tr>';dia+='</tr>';dat+='</tr>';
+  const keyf=x=>grp==='cargo'?(x.emp.cargo||'—'):grp==='turno'?x.turno:grp==='dept'?(x.emp.dept||'—'):'';
+  pool.sort((a,b)=>((keyf(a)||'').localeCompare(keyf(b)||''))||a.emp.name.localeCompare(b.emp.name));
+  const ncols=days.length+1;
+  let body='',lastK=null;
+  for(const x of pool){
+    const k=keyf(x);
+    if(grp&&k!==lastK){body+=`<tr class="grp"><td colspan="${ncols}">${k}</td></tr>`;lastK=k;}
+    body+=`<tr><td class="nm" title="${x.emp.name}">${x.emp.name}</td>`;
+    for(const d of days){const c=qCell(x,d);body+=`<td class="cell" style="background:${c.bg};color:${c.fg}">${c.t}</td>`;}
+    body+='</tr>';
+  }
+  $('quadro').innerHTML='<thead>'+sem+dia+dat+'</thead><tbody>'+body+'</tbody>';
+  $('qLeg').innerHTML=[['#22c55e','P · Presente'],['#fde047','FE · Férias'],['#e879f9','AT · Atestado'],['#fb923c','AF · Afastamento'],['#ef4444','F · Falta'],['#111827','NC · Não admitido'],['transparent','vazio · Folga']]
+    .map(([c,l])=>`<span><i style="background:${c}"></i>${l}</span>`).join('');
+}
+function quadroCsv(){
+  const pool=quadroPool(), days=periodDays();
+  const head=['Colaborador','Departamento','Cargo','Turno',...days.map(d=>d.ddmm)];
+  const rows=[head];
+  for(const x of pool)rows.push([x.emp.name,x.emp.dept,x.emp.cargo,x.turno,...days.map(d=>qCell(x,d).t||'')]);
+  download('quadro_presenca.csv',rows.map(r=>r.map(c=>`"${String(c==null?'':c).replace(/"/g,'""')}"`).join(';')).join('\n'));
+}
+
 /* eventos */
 $('pickBtn').onclick=()=>$('file').click();
 $('file').onchange=e=>handleFile(e.target.files[0]);
@@ -1021,6 +1110,8 @@ $('periodSel').onchange=()=>{
 };
 $('opDay').onchange=renderOpCargo;
 ['rgFrom','rgTo'].forEach(id=>$(id).addEventListener('change',()=>{if(CHARTMODE==='cargo')renderChartByCargo();}));
+['qDep','qTurno','qCargo','qGroup'].forEach(id=>$(id).addEventListener('change',renderQuadro));
+$('qCsv').onclick=quadroCsv;
 $('modeGeral').onclick=()=>{CHARTMODE='geral';setChartMode();};
 $('modeCargo').onclick=()=>{CHARTMODE='cargo';setChartMode();};
 function setChartMode(){
@@ -1036,7 +1127,9 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   const tab=t.dataset.tab;
   $('panelColab').classList.toggle('hidden',tab!=='colab');
   $('panelDash').classList.toggle('hidden',tab!=='dash');
+  $('panelQuadro').classList.toggle('hidden',tab!=='quadro');
   if(tab==='dash')renderDashboard();
+  if(tab==='quadro')renderQuadro();
 });
 /* filtros dashboard */
 ['dDep','dCargo','dTurno'].forEach(id=>$(id).addEventListener('change',()=>{rebuildNames();renderDashboard();}));
